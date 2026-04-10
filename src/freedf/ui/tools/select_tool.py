@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QMenu,
 )
 
-from freedf.core.annotations import AnnotationData, Rect
+from freedf.core.annotations import AnnotationData, Color, Rect
 
 if TYPE_CHECKING:
     from freedf.core.document import Document
@@ -30,12 +30,16 @@ class SelectTool:
         get_scene: Callable[[], PageScene] | None = None,
         get_zoom: Callable[[], float] | None = None,
         execute_command: Callable[[object], None] | None = None,
+        on_selection_changed: Callable[[AnnotationData | None], None] | None = None,
+        get_parent_widget: Callable[[], object] | None = None,
     ) -> None:
         self._get_document = get_document
         self._get_page_number = get_page_number
         self._get_scene = get_scene
         self._get_zoom = get_zoom
         self._execute_command = execute_command
+        self._on_selection_changed = on_selection_changed
+        self._get_parent = get_parent_widget
 
         self._selected_annot: AnnotationData | None = None
         self._selection_rect: QGraphicsRectItem | None = None
@@ -73,6 +77,14 @@ class SelectTool:
 
         hit = self._hit_test(pdf_pos)
         if hit:
+            # Double-click on same freetext = edit it
+            if (
+                self._selected_annot
+                and hit.annot_id == self._selected_annot.annot_id
+                and hit.annot_type.value == 2  # FREE_TEXT
+            ):
+                self._edit_freetext(hit)
+                return True
             self._select(hit)
             self._dragging = True
             self._drag_start = pdf_pos
@@ -131,12 +143,65 @@ class SelectTool:
         self._selection_rect.setPen(pen)
         self._selection_rect.setBrush(QColor(46, 125, 50, 20))
         scene.addItem(self._selection_rect)
+        if self._on_selection_changed:
+            self._on_selection_changed(annot)
 
     def _clear_selection(self) -> None:
         if self._selection_rect and self._get_scene:
             self._get_scene().removeItem(self._selection_rect)
         self._selection_rect = None
         self._selected_annot = None
+        if self._on_selection_changed:
+            self._on_selection_changed(None)
+
+    def _edit_freetext(self, annot: AnnotationData) -> None:
+        """Open dialog to edit freetext annotation content."""
+        from PySide6.QtWidgets import QInputDialog
+
+        if self._get_parent is None or self._get_document is None:
+            return
+        if self._get_page_number is None or self._execute_command is None:
+            return
+
+        parent = self._get_parent()
+        text, ok = QInputDialog.getMultiLineText(
+            parent,  # type: ignore[arg-type]
+            "Edit Note",
+            "Text:",
+            annot.content,
+        )
+        if not ok:
+            return
+
+        doc = self._get_document()
+        if doc is None:
+            return
+
+        # Delete old and recreate with new text (fitz doesn't support
+        # changing freetext content directly via modify_annotation)
+        from freedf.commands.annotation_commands import (
+            AddFreeTextCommand,
+            DeleteAnnotationCommand,
+        )
+
+        del_cmd = DeleteAnnotationCommand(
+            document=doc,
+            page_number=self._get_page_number(),
+            annot_id=annot.annot_id,
+        )
+        self._execute_command(del_cmd)
+
+        add_cmd = AddFreeTextCommand(
+            document=doc,
+            page_number=self._get_page_number(),
+            rect=annot.rect,
+            text=text,
+            font_size=annot.font_size,
+            text_color=annot.color_stroke or Color(0, 0, 0),
+            fill_color=annot.color_fill,
+        )
+        self._execute_command(add_cmd)
+        self._clear_selection()
 
     def _show_context_menu(
         self, event: QGraphicsSceneMouseEvent, annot: AnnotationData

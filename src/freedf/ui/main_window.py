@@ -32,13 +32,16 @@ from freedf.rendering.cache import RenderCache
 from freedf.ui.annotation_panel import AnnotationPanel
 from freedf.ui.page_view import PageView
 from freedf.ui.panels.form_panel import FormPanel
+from freedf.ui.panels.properties_panel import PropertiesPanel
 from freedf.ui.thumbnails import ThumbnailPanel
 from freedf.ui.toolbar import ToolbarManager
 from freedf.ui.tools.freetext_tool import FreeTextTool
 from freedf.ui.tools.highlight_tool import HighlightTool
 from freedf.ui.tools.ink_tool import InkTool
+from freedf.ui.tools.redact_tool import RedactTool
 from freedf.ui.tools.select_tool import SelectTool
 from freedf.ui.tools.shape_tool import EllipseTool, LineTool, RectTool
+from freedf.ui.tools.stamp_tool import StampTool
 from freedf.ui.tools.text_selector import TextSelectorTool
 from freedf.ui.tools.tool_manager import ToolManager
 
@@ -64,12 +67,14 @@ class MainWindow(QMainWindow):
         self._thumbnail_panel = ThumbnailPanel()
         self._page_view = PageView()
         self._annotation_panel = AnnotationPanel()
+        self._properties_panel = PropertiesPanel(execute_command=self._execute_command)
         self._form_panel = FormPanel(execute_command=self._execute_command)
-        self._form_panel.hide()  # shown only when form fields exist
+        self._form_panel.hide()
 
-        # Right sidebar: stack annotation + form panels
+        # Right sidebar: stack annotation + properties + form panels
         right_sidebar = QSplitter(Qt.Orientation.Vertical)
         right_sidebar.addWidget(self._annotation_panel)
+        right_sidebar.addWidget(self._properties_panel)
         right_sidebar.addWidget(self._form_panel)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -126,6 +131,28 @@ class MainWindow(QMainWindow):
             action.triggered.connect(
                 lambda _checked=False, c=code: self._set_language(c)
             )
+
+        # Edit menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        edit_menu.addAction("Find && Replace...", self._show_find_replace, "Ctrl+H")
+        edit_menu.addAction("Add Text...", self._show_insert_text)
+        edit_menu.addAction("Watermark...", self._show_watermark)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Flatten Annotations", self._flatten_annotations)
+
+        # Pages menu
+        pages_menu = menu_bar.addMenu("&Pages")
+        pages_menu.addAction("Merge PDFs...", self._show_merge_dialog)
+        pages_menu.addAction("Split PDF...", self._show_split_dialog)
+        pages_menu.addAction("Extract Pages...", self._show_extract_dialog)
+        pages_menu.addAction("Insert Pages...", self._show_insert_dialog)
+        pages_menu.addSeparator()
+        pages_menu.addAction("Insert Image...", self._show_image_dialog)
+
+        # Tools menu
+        tools_menu = menu_bar.addMenu("&Tools")
+        tools_menu.addAction("OCR...", self._show_ocr_dialog)
+        tools_menu.addAction("Export Text...", self._show_export_text_dialog)
 
     def _toggle_theme(self, dark: bool) -> None:
         from PySide6.QtCore import QSettings
@@ -195,6 +222,8 @@ class MainWindow(QMainWindow):
                 get_scene=lambda: self._page_view.page_scene,
                 get_zoom=lambda: self._current_zoom,
                 execute_command=self._execute_command,
+                on_selection_changed=self._on_annot_selection_changed,
+                get_parent_widget=lambda: self,
             )
         )
         self._tool_manager.register(HighlightTool(**common))  # type: ignore[arg-type]
@@ -220,7 +249,34 @@ class MainWindow(QMainWindow):
                 get_zoom=lambda: self._current_zoom,
             )
         )
+        self._tool_manager.register(
+            StampTool(
+                get_document=lambda: self._document,
+                get_page_number=lambda: self._current_page,
+                get_parent_widget=lambda: self,
+                tool_manager=self._tool_manager,
+                execute_command=self._execute_command,
+            )
+        )
+        self._tool_manager.register(
+            RedactTool(
+                get_document=lambda: self._document,
+                get_page_number=lambda: self._current_page,
+                get_scene=lambda: self._page_view.page_scene,
+                get_zoom=lambda: self._current_zoom,
+                execute_command=self._execute_command,
+            )
+        )
         self._tool_manager.set_tool("select")
+
+    def _on_annot_selection_changed(self, annot: object) -> None:
+        from freedf.core.annotations import AnnotationData
+
+        self._properties_panel.set_context(self._document, self._current_page)
+        if isinstance(annot, AnnotationData):
+            self._properties_panel.show_annotation(annot)
+        else:
+            self._properties_panel.clear()
 
     def _on_tool_changed(self, tool_name: str) -> None:
         from PySide6.QtWidgets import QGraphicsView
@@ -362,6 +418,53 @@ class MainWindow(QMainWindow):
         dlg = ExportTextDialog(self._document, self._current_page, self)
         dlg.exec()
 
+    def _show_find_replace(self) -> None:
+        from freedf.ui.dialogs.find_replace_dialog import FindReplaceDialog
+
+        if self._document is None:
+            return
+        dlg = FindReplaceDialog(
+            self._document, self._current_page, self._execute_command, self
+        )
+        dlg.exec()
+        self._refresh_all()
+
+    def _show_insert_text(self) -> None:
+        from freedf.commands.text_commands import InsertTextCommand
+        from freedf.ui.dialogs.insert_text_dialog import InsertTextDialog
+
+        if self._document is None:
+            return
+        dlg = InsertTextDialog(self)
+        if dlg.exec() and dlg.result_text:
+            cmd = InsertTextCommand(
+                document=self._document,
+                page_number=self._current_page,
+                x=dlg.result_x,
+                y=dlg.result_y,
+                text=dlg.result_text,
+                font_size=dlg.result_font_size,
+            )
+            self._execute_command(cmd)
+
+    def _show_watermark(self) -> None:
+        from freedf.commands.text_commands import AddWatermarkCommand
+        from freedf.ui.dialogs.watermark_dialog import WatermarkDialog
+
+        if self._document is None:
+            return
+        dlg = WatermarkDialog(self._document.page_count, self)
+        if dlg.exec() and dlg.result_text:
+            pages = None if dlg.result_all_pages else [self._current_page]
+            cmd = AddWatermarkCommand(
+                document=self._document,
+                text=dlg.result_text,
+                page_numbers=pages,
+                font_size=dlg.result_font_size,
+                opacity=dlg.result_opacity,
+            )
+            self._execute_command(cmd)
+
     def _connect_actions(self) -> None:
         a = self._toolbar_mgr.actions
         a["open"].triggered.connect(lambda: self.open_file())
@@ -393,6 +496,8 @@ class MainWindow(QMainWindow):
             ("tool_line", "line"),
             ("tool_arrow", "arrow"),
             ("tool_text_select", "text_select"),
+            ("tool_stamp", "stamp"),
+            ("tool_redact", "redact"),
         ]:
             a[key].triggered.connect(
                 lambda _checked=False, n=tool_name: self._on_tool_changed(n)
@@ -420,6 +525,9 @@ class MainWindow(QMainWindow):
         a["flatten"].triggered.connect(self._flatten_annotations)
         a["ocr"].triggered.connect(self._show_ocr_dialog)
         a["export_text"].triggered.connect(self._show_export_text_dialog)
+        a["find_replace"].triggered.connect(self._show_find_replace)
+        a["insert_text"].triggered.connect(self._show_insert_text)
+        a["watermark"].triggered.connect(self._show_watermark)
 
         self._thumbnail_panel.page_selected.connect(self.go_to_page)
         self._thumbnail_panel.page_reordered.connect(self._reorder_page)
