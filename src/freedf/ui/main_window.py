@@ -111,6 +111,56 @@ class MainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction("&Quit", self.close, "Ctrl+Q")
 
+        view_menu = menu_bar.addMenu("&View")
+        self._dark_theme_action = view_menu.addAction("Dark Theme")
+        self._dark_theme_action.setCheckable(True)
+        self._dark_theme_action.setChecked(self._load_theme_pref() == "dark")
+        self._dark_theme_action.toggled.connect(self._toggle_theme)
+
+        lang_menu = QMenu("Language", self)
+        view_menu.addMenu(lang_menu)
+        from freedf.i18n import AVAILABLE_LANGUAGES
+
+        for code, name in AVAILABLE_LANGUAGES.items():
+            action = lang_menu.addAction(name)
+            action.triggered.connect(
+                lambda _checked=False, c=code: self._set_language(c)
+            )
+
+    def _toggle_theme(self, dark: bool) -> None:
+        from PySide6.QtCore import QSettings
+
+        from freedf.app import STYLESHEETS
+
+        theme = "dark" if dark else "light"
+        from PySide6.QtWidgets import QApplication as _QApp
+
+        app = _QApp.instance()
+        if isinstance(app, _QApp):
+            app.setStyleSheet(STYLESHEETS[theme])
+        settings = QSettings("FreeDF", "FreeDF")
+        settings.setValue("theme", theme)
+
+    @staticmethod
+    def _set_language(lang_code: str) -> None:
+        from PySide6.QtCore import QSettings
+        from PySide6.QtWidgets import QMessageBox
+
+        settings = QSettings("FreeDF", "FreeDF")
+        settings.setValue("language", lang_code)
+        QMessageBox.information(
+            None,  # type: ignore[arg-type]
+            "Language",
+            "Restart FreeDF to apply the new language.",
+        )
+
+    @staticmethod
+    def _load_theme_pref() -> str:
+        from PySide6.QtCore import QSettings
+
+        settings = QSettings("FreeDF", "FreeDF")
+        return str(settings.value("theme", "light"))
+
     def _update_recent_menu(self) -> None:
         self._recent_menu.clear()
         recent = self._recent_files.get_list()
