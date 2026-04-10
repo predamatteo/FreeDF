@@ -347,6 +347,11 @@ STYLESHEETS = {"light": STYLESHEET, "dark": DARK_STYLESHEET}
 
 def main() -> None:
     """Launch the FreeDF application."""
+    # Handle --register / --unregister before starting Qt
+    if len(sys.argv) > 1 and sys.argv[1] in ("--register", "--unregister"):
+        _handle_registration(sys.argv[1])
+        return
+
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -384,6 +389,31 @@ def main() -> None:
             window.open_file(file_path)
 
     sys.exit(app.exec())
+
+
+def _handle_registration(flag: str) -> None:
+    """Handle --register / --unregister for Windows file association."""
+    if sys.platform != "win32":
+        print("File association registration is only supported on Windows.")
+        return
+    try:
+        from scripts.register_windows import install, uninstall
+    except ImportError:
+        import subprocess
+
+        base = Path(__file__).resolve().parent.parent.parent
+        script = base / "scripts" / "register_windows.py"
+        if not script.exists():
+            print(f"Registration script not found: {script}")
+            return
+        action = "install" if flag == "--register" else "uninstall"
+        subprocess.run([sys.executable, str(script), action], check=False)
+        return
+
+    if flag == "--register":
+        install()
+    else:
+        uninstall()
 
 
 if __name__ == "__main__":
