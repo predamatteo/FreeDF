@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import fitz; print\\(fitz.__version__\\); print\\(dir\\(fitz.Document\\)\\)\")",
+      "Bash(python -c \"import fitz; help\\(fitz.Document.save\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0]['text']; print\\(text[:8000]\\)\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0]['text']; print\\(text[8000:16000]\\)\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0]['text']; print\\(text[16000:24000]\\)\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0]['text']; print\\(text[24000:]\\)\")",
+      "Bash(curl -sL \"https://www.gnu.org/licenses/agpl-3.0.txt\")",
+      "Bash(pip install:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(mypy src/)",
+      "Bash(pytest -m \"not ui\" -v)",
+      "Bash(pytest tests/test_commands/test_page_commands.py -v)"
+    ]
+  }
+}
