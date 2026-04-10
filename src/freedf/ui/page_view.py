@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from PIL import Image
 from PySide6.QtCore import QEvent, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap, QWheelEvent
+from PySide6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QImage,
+    QPainter,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import QGraphicsView, QWidget
 
 from freedf.ui.page_scene import PageScene
@@ -29,6 +37,7 @@ class PageView(QGraphicsView):
         self.setBackgroundBrush(QColor("#f0f0f0"))
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setAcceptDrops(True)
 
     @property
     def page_scene(self) -> PageScene:
@@ -73,3 +82,28 @@ class PageView(QGraphicsView):
         if event.type() == QEvent.Type.Gesture:
             return True
         return super().event(event)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                if url.toLocalFile().lower().endswith(".pdf"):
+                    event.acceptProposedAction()
+                    return
+        super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event: object) -> None:  # noqa: N802
+        # Must accept drag move for drop to work
+        from PySide6.QtGui import QDragMoveEvent
+
+        if isinstance(event, QDragMoveEvent):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.lower().endswith(".pdf"):
+                # Delegate to MainWindow.open_file
+                window = self.window()
+                if hasattr(window, "open_file"):
+                    window.open_file(path)
+                break
