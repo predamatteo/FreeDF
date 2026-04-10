@@ -247,6 +247,8 @@ class MainWindow(QMainWindow):
                 get_page_number=lambda: self._current_page,
                 get_scene=lambda: self._page_view.page_scene,
                 get_zoom=lambda: self._current_zoom,
+                execute_command=self._execute_command,
+                get_parent_widget=lambda: self,
             )
         )
         self._tool_manager.register(

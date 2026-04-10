@@ -10,6 +10,7 @@ from freedf.core.annotations import Color, Rect
 from freedf.core.document import Document
 from freedf.core.text_edit import (
     add_watermark,
+    delete_text_on_page,
     insert_text_on_page,
     replace_text_on_page,
 )
@@ -23,7 +24,7 @@ class ReplaceTextCommand:
     page_number: int
     old_text: str
     new_text: str
-    font_size: float = 11.0
+    font_size: float | None = None
     color: Color | None = None
     _page_backup: bytes = field(init=False, default=b"")
     _count: int = field(init=False, default=0)
@@ -42,6 +43,28 @@ class ReplaceTextCommand:
             self.font_size,
             self.color,
         )
+
+    def undo(self) -> None:
+        self.document.restore_page_from_backup(self.page_number, self._page_backup)
+
+
+@dataclass
+class DeleteTextCommand:
+    """Delete text from a page (page-backup undo)."""
+
+    document: Document
+    page_number: int
+    text: str
+    _page_backup: bytes = field(init=False, default=b"")
+    _count: int = field(init=False, default=0)
+
+    @property
+    def description(self) -> str:
+        return f"Delete '{self.text}' on page {self.page_number + 1}"
+
+    def execute(self) -> None:
+        self._page_backup = self.document.backup_page(self.page_number)
+        self._count = delete_text_on_page(self.document, self.page_number, self.text)
 
     def undo(self) -> None:
         self.document.restore_page_from_backup(self.page_number, self._page_backup)
