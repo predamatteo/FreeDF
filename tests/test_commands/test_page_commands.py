@@ -8,6 +8,7 @@ from freedf.commands.base import CommandStack
 from freedf.commands.page_commands import (
     DeletePageCommand,
     DuplicatePageCommand,
+    ReorderPageCommand,
     RotatePageCommand,
 )
 
@@ -77,6 +78,26 @@ class TestDuplicatePageCommand:
         assert sample_document.page_count == original_count
         stack.redo()
         assert sample_document.page_count == original_count + 1
+
+
+class TestReorderPageCommand:
+    def test_execute_and_undo(self, sample_document: Document) -> None:
+        cmd = ReorderPageCommand(sample_document, 0, 2)
+        cmd.execute()
+        # Page 0 content should now be at position 2
+        assert "Page 1" not in sample_document.get_page(0).get_text()
+
+        cmd.undo()
+        assert "Page 1" in sample_document.get_page(0).get_text()
+
+    def test_via_stack(self, sample_document: Document) -> None:
+        stack = CommandStack()
+        cmd = ReorderPageCommand(sample_document, 0, 2)
+        stack.execute(cmd)
+        stack.undo()
+        assert "Page 1" in sample_document.get_page(0).get_text()
+        stack.redo()
+        assert "Page 1" not in sample_document.get_page(0).get_text()
 
 
 class TestCommandComposition:

@@ -54,3 +54,10 @@ class InvalidRotationError(FreedfError):
     def __init__(self, value: int) -> None:
         self.value = value
         super().__init__(f"Invalid rotation {value}: must be 0, 90, 180, or 270")
+
+
+class InvalidPageRangeError(FreedfError):
+    """Raised when a page range is invalid."""
+
+    def __init__(self, reason: str = "") -> None:
+        super().__init__(reason or "Invalid page range")

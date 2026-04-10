@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import IntEnum
 
 
@@ -10,7 +10,11 @@ class AnnotationType(IntEnum):
     """Annotation types (values mirror fitz.PDF_ANNOT_* constants)."""
 
     FREE_TEXT = 2
+    LINE = 3
+    SQUARE = 4
+    CIRCLE = 5
     HIGHLIGHT = 8
+    INK = 15
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,9 @@ class Color:
     def green(cls) -> Color:
         return cls(0.0, 1.0, 0.0)
 
+    def to_tuple(self) -> tuple[float, float, float]:
+        return (self.r, self.g, self.b)
+
 
 @dataclass(frozen=True)
 class AnnotationData:
@@ -63,3 +70,6 @@ class AnnotationData:
     content: str = ""
     opacity: float = 1.0
     annot_id: str = ""
+    border_width: float = 1.0
+    font_size: float = 12.0
+    vertices: list[list[tuple[float, float]]] = field(default_factory=list)

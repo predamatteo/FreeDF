@@ -74,3 +74,29 @@ class DuplicatePageCommand:
 
     def undo(self) -> None:
         self.document.delete_page(self._copy_index)
+
+
+@dataclass
+class ReorderPageCommand:
+    """Move a page from one position to another."""
+
+    document: Document
+    from_index: int
+    to_index: int
+
+    @property
+    def description(self) -> str:
+        return f"Move page {self.from_index + 1} to position {self.to_index + 1}"
+
+    def execute(self) -> None:
+        self.document.move_page(self.from_index, self.to_index)
+
+    def undo(self) -> None:
+        # fitz.move_page inserts "before position to", so indices shift.
+        # After move_page(A, B): page lands at B-1 if A<B, or at B if A>B.
+        f, t = self.from_index, self.to_index
+        if f < t:
+            self.document.move_page(t - 1, f)
+        elif f > t:
+            self.document.move_page(t, f + 1)
+        # f == t: no-op, nothing to undo
